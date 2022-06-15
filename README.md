@@ -32,7 +32,6 @@ This project consists of the following components:
   - gid = GitHub ID of a repository
   - add new jobs to queue for a project: enqueue_relevant_commits()
   - find new potential repositories that use CodeQL: codeql_repos_by_code_date_search()
-  - `checking_queue`: 
 
 ## Getting Started
 

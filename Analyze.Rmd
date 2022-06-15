@@ -58,7 +58,7 @@ where = """
       and p.gid in (select distinct gid from Analysis_TABLE a1 where timediff >= 0 and timediff <= 17280000)
       and p.gid not in (4287066)
 """
-path = '/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/' + folder + '/'
+path = '/home/user/' + folder + '/' # Todo set path
 
 print('Starting data analysis. This may take several minutes.')
 gids = []
@@ -76,7 +76,7 @@ a.repos_individual_development()
 ```
 
 ```{r}
-setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+setwd(paste('/home/user/', py$folder, '/', sep = "")) # TODO set path
 
 theme_set(theme_bw())
 
@@ -94,7 +94,6 @@ pre_all.period <- c(-5788, -3)
 post_all.period <- c(1, 624)
 
 # Run CausalImpcat on all rules
-setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
 control <- read.csv("/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/control-time-series/control.csv")
 control_all <- read.csv("/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/control-time-series/control_all.csv")
 for (method in c('mean')) # method for data processing: everything that's supported by pandas (mad, median, ...) should work
@@ -148,7 +147,6 @@ for (method in c('mean')) # method for data processing: everything that's suppor
   })
 }}
 
-setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
 x = seq(-500, 199)
 dfa <- data.frame(
   index = seq(-500, 200),
@@ -218,7 +216,6 @@ tryCatch({
 
 #Line chart of all rules
 tryCatch({
-  setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
   plot <- ggplot(df, aes(x = index,
                          y = value, 
                          fill = rule)) + 
@@ -250,7 +247,6 @@ tryCatch({
 })
 
 #Shows the percentage of each rule over time
-setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
 datap <- df  %>%
   group_by(index, rule) %>%
   summarise(n = sum(value)) %>%
@@ -303,7 +299,6 @@ write.csv2(datap,'all_rules_proportion.csv', row.names = TRUE, sep=';')
 
 
 # Javascript Size vs Number of Problems
-setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
 avg_problems_vs_size <- read.csv('avg_problems_vs_jssize.csv')
 plot <- ggplot(avg_problems_vs_size, aes(x = javascript_size, y = avg_problems)) +
   xlim(0, 250000) +
@@ -319,7 +314,6 @@ print('avg_problems_vs_jssize.svg: blue trend line: locally estimated scatterplo
 
 
 # before after percentage change
-setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
 for (column in c('overall', 'html_constructed_from_input', 'reflected_xss', 'stored_xss', 'unsafe_jquery_plugin', 'xss', 'xss_through_dom', 'xss_through_exception')) {
   tryCatch({
     repos_before_after_comparison <- read.csv(paste(column, '_repos_before_after_comparison.csv', sep = ''))
@@ -367,7 +361,6 @@ for (column in c('overall', 'html_constructed_from_input', 'reflected_xss', 'sto
 
 #individual graph per repo
 # This graph is most useful when only a few repositories are examined
-setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
 for (column in c('overall', 'html_constructed_from_input', 'reflected_xss', 'stored_xss', 'unsafe_jquery_plugin', 'xss', 'xss_through_dom', 'xss_through_exception')) {
   tryCatch({
     repos_individual_development <- read.csv(paste(column, '_repos_individual_development.csv', sep = ''))
