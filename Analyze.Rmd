@@ -1,0 +1,397 @@
+```{r setup, include=FALSE}
+library(reticulate)
+library(CausalImpact)
+library(ggplot2)
+library(reshape2)
+library(ggrepel)
+library(dplyr)
+library(directlabels)
+library(svglite)
+
+use_python("/usr/bin/python3.8", required = TRUE)
+
+#safe ggplot as svg file
+safe_plot <- function(filename, plot, height=10, width=18) {
+  ggsave(file=filename, plot=plot, width=width, height=height, units = "cm")
+} 
+
+# safe CausalImpact data as svg file
+safe_causalimpact <- function(impact, method, name) {
+  print(paste('CausalImpact: ', method, name))
+  # single plot for each metric
+  # also plot cumulative (although this plot actually makes no sense in this use case)
+  for (metric in c("original", "pointwise", "cumulative")) {
+    height <- 15
+    plot <- plot(impact, c(metric)) + 
+      xlab("Days to CodeQL")
+    if (metric == 'original') {
+      plot <- plot + 
+        ylab("Average Number of Problems Found")
+    } else if (metric == 'pointwise') {
+      plot <- plot + 
+        ylab("Difference (Prediction - Observed)")
+        height <- 17
+    }
+    safe_plot(paste(column, '_CausalImpact_', metric, '_', method, name, ".svg", sep = ""), plot, height=15, width=25)
+  }
+  
+  plot <- plot(impact, c("original", "pointwise")) + xlab("Days to CodeQL")
+  safe_plot(paste(column, '_CausalImpact_', method, name, '_overall.svg', sep = ""), plot, height=20, width=25)
+  
+  summary(impact)
+  summary(impact, "report")
+}
+
+```
+
+```{python}
+import os
+from src.Analyze import Analyze
+
+# EDIT VARIABLES HERE
+folder = '305507071'
+where = """
+   		  p.status = 1
+      and pm.fork is false
+      and c.scans_javascript = 1
+      and a.timediff < 0 and a.timediff >= -43200000
+      and p.gid in (select distinct gid from Analysis_TABLE a1 where timediff >= 0 and timediff <= 17280000)
+      and p.gid not in (4287066)
+"""
+path = '/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/' + folder + '/'
+
+print('Starting data analysis. This may take several minutes.')
+gids = []
+a = Analyze(path, where)
+gids = a.gids
+
+if not os.path.exists(path):
+    os.makedirs(path)
+
+# Calculate the development for the repositories and save it to a CSV files
+a.repos_analyze_all_problems()
+a.avg_problems_vs_jssize()
+a.repos_before_after_comparison()
+a.repos_individual_development()
+```
+
+```{r}
+setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+
+theme_set(theme_bw())
+
+sink("readme.txt")
+print('Log information')
+print(paste('folder:', py$folder))
+print(length(py$gids))
+print(py$where)
+print(py$gids)
+
+pre.period <- c(-500, -1)
+post.period <- c(1, 200)
+
+pre_all.period <- c(-5788, -3)
+post_all.period <- c(1, 624)
+
+# Run CausalImpcat on all rules
+setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+control <- read.csv("/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/control-time-series/control.csv")
+control_all <- read.csv("/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/control-time-series/control_all.csv")
+for (method in c('mean')) # method for data processing: everything that's supported by pandas (mad, median, ...) should work
+{for (column in c('overall', 'html_constructed_from_input', 'reflected_xss', 'stored_xss', 'unsafe_jquery_plugin', 'xss', 'xss_through_dom', 'xss_through_exception')) {
+  tryCatch({
+    print(paste('Results for the column:', column, 'aggregate function:', method))
+    data1 <- read.csv(paste(column, '_', method, '.csv', sep = ''))
+    data1_all <- read.csv(paste(column, '_', method, '_all.csv', sep = ''))
+
+    data <- zoo(cbind(data1, control), seq(-500, 200))
+    data_all <- zoo(cbind(data1_all, control_all), seq(-5788, 624))
+    
+    # plot -500 to 200 raw data plot
+    plot <- ggplot(data1, aes(x = seq(-500, 200), y = x)) + 
+      geom_vline(xintercept=0, linetype='dashed', color='grey', size=1) +
+      xlab("Days to CodeQL") +
+      ylab('Average Number of Problems Found') + 
+      xlim(-500, 200) +
+      geom_line()
+    safe_plot(paste(column, '_', method, '_raw.svg', sep = ''), plot)
+    
+    # plot -500 to 200 raw data plot with trend line
+    plot <- ggplot(data1, aes(x = seq(-500, 200), y = x)) + 
+      geom_vline(xintercept=0, linetype='dashed', color='grey', size=1) +
+      xlab("Days to CodeQL") +
+      ylab('Average Number of Problems Found') + 
+      xlim(-500, 200) +
+      geom_line() +
+      geom_smooth(method=loess)
+    safe_plot(paste(column, '_', method, '_trend.svg', sep = ''), plot)
+    
+    # plot -5788 to 624 raw data plot
+    plot <- ggplot(data1_all, aes(x = seq(-5788, 624), y = x)) + 
+      geom_vline(xintercept=0, linetype='dashed', color='grey', size=1) +
+      xlab("Days to CodeQL") +
+      ylab('Average Number of Problems Found') + 
+      xlim(-5788, 624) +
+      geom_line()
+    safe_plot(paste(column, '_', method, '_all_raw.svg', sep = ''), plot)
+
+    impact <- CausalImpact(data, pre.period, post.period) # perform CausalImpact analysis -500 to 200 days
+    impact_all <- CausalImpact(data_all, pre_all.period, post_all.period) # perform CausalImpact -5788 to 624 days
+
+    safe_causalimpact(impact, method, '')
+    safe_causalimpact(impact_all, method, '_all')
+
+  }, error = function(e) {
+    # CausalImpact fails if change is constant
+    print(paste('ERROR collum:', column, 'aggregate function:', method))
+    str(e)
+  })
+}}
+
+setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+x = seq(-500, 199)
+dfa <- data.frame(
+  index = seq(-500, 200),
+  xss_through_dom = read.csv('xss_through_dom_mean.csv')$x,
+  unsafe_jquery_plugin = read.csv('unsafe_jquery_plugin_mean.csv')$x,
+  html_constructed_from_input = read.csv('html_constructed_from_input_mean.csv')$x,
+  xss = read.csv('xss_mean.csv')$x,
+  reflected_xss = read.csv('reflected_xss_mean.csv')$x,
+  xss_through_exception = read.csv('xss_through_exception_mean.csv')$x,
+  stored_xss = read.csv('stored_xss_mean.csv')$x
+  )
+df <- melt(dfa,  id.vars = 'index', variable.name = 'rule')
+df$rule <- recode(df$rule, xss_through_dom = 'XSS through DOM', 
+                           unsafe_jquery_plugin = 'Unsafe jQuery plugin',
+                           html_constructed_from_input = 'HTML constructed from input',
+                           xss = 'XSS',
+                           reflected_xss = 'Reflected XSS',
+                           xss_through_exception = 'XSS through Exception',
+                           stored_xss = 'Stored XSS'
+                  )
+
+#stacked area plot for all rules
+tryCatch({
+  datal <- filter(df, index == -150 & value >= 0.2)
+  sum <- sum(filter(df, index == -150)$value)
+  for (i in 1:length(datal$value)) {
+    x <- datal$value[i]
+    datal$value[i] <- sum - x/2
+    sum <- sum - x
+  } 
+  plot <- ggplot(df, aes(index, value, fill = rule)) + 
+    xlab("Days to CodeQL") +
+    ylab('Average Number of Problems Found') + 
+    geom_area(colour = "black", size = .4, alpha = 0.4) +
+    geom_text(data = datal, 
+                aes(label = rule,
+                    colour = rule),
+                nudge_x = 0,
+                nudge_y = 0,
+                colour="black",
+        ) +
+    geom_label_repel(data = filter(df, index == -150 & value < 0.2), 
+              aes(label = rule,
+                  colour = rule),
+              direction = "y",
+              segment.size = 0.4,
+              segment.linetype = "solid",
+              box.padding = 0.1,
+              seed = 10,
+              nudge_x = 40,
+              nudge_y = -0.5,
+              colour="black",
+              # alpha = 0.5,
+              label.size = 0,
+              segment.colour="grey"
+        ) +
+    geom_vline(xintercept=0, linetype='dashed', color='grey', size=1) +
+    geom_area(colour = "black", size = .4, alpha = 0) + # redraw black lines
+    xlim(-500, 200) +
+    # ylim(-0.25, ceiling(max(df$value))) +
+    theme(legend.position = "none")
+  safe_plot("all_rules_stacked_area.svg", plot)
+}, error = function(e) {
+    print('tacked area plot for all rules')
+    str(e)
+})
+
+#Line chart of all rules
+tryCatch({
+  setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+  plot <- ggplot(df, aes(x = index,
+                         y = value, 
+                         fill = rule)) + 
+    geom_vline(xintercept=0, linetype='dashed', color='grey', size=1) +
+    xlab("Days to CodeQL") +
+    ylab('Average Number of Problems Found') + 
+    geom_text_repel(data = filter(df, index == 85), 
+                aes(label = rule,
+                    colour = '#0000'),
+                # direction = "y",
+                # vjust = 0.2,
+                hjust = 0.1,
+                segment.size = 0.4,
+                segment.linetype = "solid",
+                box.padding = 0.12,
+                # seed = 10,
+                nudge_x = 30,
+                nudge_y = 0.1,
+                colour="black", 
+                segment.colour="grey"
+                ) +
+    theme(legend.position = "none") +#, text = element_text(size = 20)) +
+    xlim(-500, 200) +
+    geom_line()
+  safe_plot("all_rules_lines.svg", plot, width=21, height=15)
+}, error = function(e) {
+    print('tacked area plot for all rules')
+    str(e)
+})
+
+#Shows the percentage of each rule over time
+setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+datap <- df  %>%
+  group_by(index, rule) %>%
+  summarise(n = sum(value)) %>%
+  mutate(value = n / sum(n)) 
+data_labels <- filter(datap, index == -150 & value >= 0.05)
+sum <- sum(filter(datap, index == -150)$value)
+for (i in 1:length(data_labels$value)) {
+  x <- data_labels$value[i]
+  data_labels$value[i] <- sum - x/2
+  sum <- sum - x
+} 
+plot <- ggplot(datap, aes(index, value, fill = rule)) + 
+  xlab("Days to CodeQL") +
+  # ylab('Average Number of Problems Found') + 
+  geom_area(colour = "black", size = .4, alpha = 0.4) +
+  # geom_dl(aes(label=rule), method="last.points") +
+  theme(legend.position = "none") +
+  geom_text(data = data_labels,
+              aes(label = rule,
+                  colour = rule),
+              nudge_x = 0,
+              nudge_y = 0,
+              colour="black",
+      ) +
+  geom_label_repel(data = filter(datap, index == -150 & value < 0.05),
+            aes(label = rule,
+                colour = rule),
+            direction = "y",
+            segment.size = 0.4,
+            segment.linetype = "solid",
+            box.padding = 0.1,
+            seed = 10,
+            nudge_x = 40,
+            nudge_y = -0.5,
+            colour="black",
+            # alpha = 0.5,
+            label.size = 0,
+            segment.colour="grey"
+      ) +
+  geom_vline(xintercept=0, linetype='dashed', color='grey', size=1) +
+  geom_area(colour = "black", size = .4, alpha = 0) + # redraw black lines
+  xlim(-500, 200) +
+  theme(legend.position = "none") +
+  scale_y_continuous(name='Percentage of Problems by Rule',
+                     labels = scales::percent,
+                     limits = c(-0.06, 1.01)
+                     )
+safe_plot("all_rules_proportion.svg", plot)
+write.csv2(datap,'all_rules_proportion.csv', row.names = TRUE, sep=';')
+
+
+# Javascript Size vs Number of Problems
+setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+avg_problems_vs_size <- read.csv('avg_problems_vs_jssize.csv')
+plot <- ggplot(avg_problems_vs_size, aes(x = javascript_size, y = avg_problems)) +
+  xlim(0, 250000) +
+  geom_smooth(method=loess) +
+  geom_point(alpha = 0.3, size=0.4) +
+  # scale_x_continuous(trans = 'log2') +
+  # scale_y_continuous(trans = 'log2') +
+  xlab("Size of the JavaScript Code in Bytes") +
+  ylim(0, 100) +
+  ylab("Average Number of Problems in Repo")
+safe_plot("avg_problems_vs_jssize.svg", plot)
+print('avg_problems_vs_jssize.svg: blue trend line: locally estimated scatterplot smoothing (moving regression)')
+
+
+# before after percentage change
+setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+for (column in c('overall', 'html_constructed_from_input', 'reflected_xss', 'stored_xss', 'unsafe_jquery_plugin', 'xss', 'xss_through_dom', 'xss_through_exception')) {
+  tryCatch({
+    repos_before_after_comparison <- read.csv(paste(column, '_repos_before_after_comparison.csv', sep = ''))
+    #Result as text
+    repos_positive_change = 
+    l = length(repos_before_after_comparison$change_percentage)
+    repos_with_problems = length(filter(repos_before_after_comparison, before+after>0)$change_percentage)
+    t = filter(repos_before_after_comparison, change_percentage<=-0.95)
+    top_performer = length(filter(repos_before_after_comparison, change_percentage<=-0.95)$change_percentage)
+    good_performer = length(filter(repos_before_after_comparison, change_percentage<0 & change_percentage>-0.95)$change_percentage)
+    no_change = length(filter(repos_before_after_comparison, change_percentage==0)$change_percentage)
+    no_change_with_problems = length(filter(repos_before_after_comparison, change_percentage==0 & before+after>0)$change_percentage)
+    worst_performer = length(filter(repos_before_after_comparison, change_percentage>0)$change_percentage)
+    overall_change = sum(repos_before_after_comparison$change)
+  
+    print(paste('repos_before_after_comparison, column:', column))
+    print(paste('number of repositories examined:', l))
+    print(paste('number of repos with problems in this 90 day timeframe:', repos_with_problems))
+    print(paste('number of repositories <=-95% top_performer:', top_performer, '   ', (top_performer/repos_with_problems)*100, '%'))
+    print(paste('number of repositories <0 good_performer:', good_performer, '   ', (good_performer/repos_with_problems)*100, '%'))
+    print(paste('number of repositories =0 no_change_with_problems:', no_change_with_problems, '   ', (no_change_with_problems/repos_with_problems)*100, '%'))
+    print(paste('number of repositories >0 worst_performer:', worst_performer, '   ', (worst_performer/repos_with_problems)*100, '%'))
+    print(paste('sum problems added - problems fixed:', overall_change))
+    
+    repos_before_after_comparison <- filter(repos_before_after_comparison, before + after > 0)
+    
+    #absolute change
+    plot <- ggplot(repos_before_after_comparison, aes(x = change_percentage, y = abs(change), size = 0.6)) +
+      geom_vline(xintercept=0, linetype='dashed', color='lightgrey') +
+      geom_vline(xintercept=-1, linetype='dashed', color='#1a7e4c') +
+      geom_point(alpha = 0.3, size=1) +
+      ylim(0, min(30, max(repos_before_after_comparison$change))) +
+      ylab("Absolute Change") +
+      scale_x_continuous(name='Change in the Number of Problems (in Percent)',
+                     labels = scales::percent,
+                     limits = c(-1, 1.5)
+                     )
+    safe_plot(paste(column, '_before_after_absolute_vs_percentage.svg', sep = ''), plot)
+  }, error = function(e) {
+      print(paste('repos_before_after_comparison ERROR collum:', column))
+      str(e)
+  })
+}
+
+
+#individual graph per repo
+# This graph is most useful when only a few repositories are examined
+setwd(paste('/home/jonas/Dokumente/UNI/7-Semester/Bachelorarbeit/analysis/generated/', py$folder, '/', sep = ""))
+for (column in c('overall', 'html_constructed_from_input', 'reflected_xss', 'stored_xss', 'unsafe_jquery_plugin', 'xss', 'xss_through_dom', 'xss_through_exception')) {
+  tryCatch({
+    repos_individual_development <- read.csv(paste(column, '_repos_individual_development.csv', sep = ''))
+    repos_individual_development_df <- melt(repos_individual_development,  id.vars = 'index', variable.name = 'gid')
+    
+    print(paste('number of repos with', column, 'problems in this 700 day timeframe:', ncol(repos_individual_development)-1))
+  
+    #absolute change
+    plot <- ggplot(repos_individual_development_df, aes(x = index,
+                                                         y = value,
+                                                         fill = gid,
+                                                         color=gid)) +
+      geom_vline(xintercept=0, linetype='dashed', color='lightgrey') +
+      geom_line(alpha = 0.7, size = 1) +
+      ylab("Number of Problems Found") +
+      xlab("Days to CodeQL")
+    safe_plot(paste(column, '_repos_individual_development_wlegend.svg', sep = ''), plot)
+    safe_plot(paste(column, '_repos_individual_development_wolegend.svg', sep = ''), plot + theme(legend.position = "none"))
+  }, error = function(e) {
+    print(paste('repos_individual_development ERROR collum:', column))
+    str(e)
+  })
+}
+
+sink() # safe log to file
+
+```

@@ -1,0 +1,23 @@
+#SBATCH -o ./bat1.out
+#SBATCH -D ./
+#SBATCH --get-user-env
+#SBATCH --clusters=cm2_tiny
+#SBATCH --partition=cm2_tiny
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=28
+# 56 is the maximum reasonable value for CooLMUC-2
+#SBATCH --mail-type=all
+#SBATCH --mail-user=slurm@jonh.eu
+#SBATCH --export=NONE
+#SBATCH --time=00:30:00
+#SBATCH --mem=8192
+module load slurm_setup
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+module load anaconda3
+conda create -n penv python=3.6 -y -q
+source activate penv
+conda install requests
+conda install psycopg2
+
+python ./main.py
