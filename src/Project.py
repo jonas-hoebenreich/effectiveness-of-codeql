@@ -402,6 +402,15 @@ class Project:
                     return 1
                 return 0
 
+    def add_project_to_table_by_id(self, gid, language):
+        decoded_result = self.get_repo_by_id(gid)
+        if decoded_result:
+            username = decoded_result['owner']['login']
+            projectname = decoded_result['name']
+            gid = decoded_result['id']
+            self.add_project(username, projectname, language, 4, gid=gid, uses_codeql=1)
+            self.add_project_meta(gid)
+
     def uses_codeql_by_id(self, rid):
         commits = self.execute_request(
             'http://api.github.com/repositories/' + str(rid) + '/commits?path=.github/workflows/codeql-analysis.yml')
