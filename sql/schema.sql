@@ -165,6 +165,9 @@ select
     count(r.id) FILTER (WHERE ruleid = 'js/xss') as "xss",
     count(r.id) FILTER (WHERE ruleid = 'js/xss-through-dom') as "xss_through_dom",
     count(r.id) FILTER (WHERE ruleid = 'js/xss-through-exception') as "xss_through_exception",
+    count(r.id) FILTER (WHERE ruleid = 'py/incomplete-hostname-regexp') as "incomplete_hostname_regexp",
+    count(r.id) FILTER (WHERE ruleid = 'py/incomplete-url-substring-sanitization') as "incomplete_url_substring_sanitization",
+    count(r.id) FILTER (WHERE ruleid = 'py/overly-large-range') as "overly_large_range",
     count(r.id) as overall,
     j.id
 from
